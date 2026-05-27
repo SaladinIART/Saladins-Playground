@@ -29,6 +29,11 @@ from src.engine.hex import Hex, distance, hex_line, hexes_within
 from src.engine.state import GameState
 from src.engine.unit import Unit
 
+# Maximum hex distance at which a stealth-flagged enemy can still be seen.
+# 0 would mean only by being on the same hex (impossible since 1u/hex);
+# 1 means adjacent observers reveal a stealth unit.
+STEALTH_DETECTION_RADIUS = 1
+
 
 def effective_vision(state: GameState, unit: Unit) -> int:
     """Vision range adjusted by the unit's current tile vision_modifier. Min 1."""
@@ -95,7 +100,7 @@ def can_faction_see_unit(state: GameState, faction_id: str, unit: Unit) -> bool:
         return False
     if unit.unit_type.stealth:
         for own in state.units_of(faction_id):
-            if distance(own.hex, unit.hex) <= 1:
+            if distance(own.hex, unit.hex) <= STEALTH_DETECTION_RADIUS:
                 return True
         return False
     return True

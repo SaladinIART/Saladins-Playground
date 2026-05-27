@@ -43,6 +43,7 @@ from src.engine.combat import (
     predict_exchange,
     resolve_attack,
 )
+from src.engine.fog import STEALTH_DETECTION_RADIUS
 from src.engine.hex import Hex, distance
 from src.engine.movement import compute_movement
 from src.engine.state import GameState
@@ -174,6 +175,25 @@ def enumerate_actions(state: GameState, faction_id: str) -> list[Action]:
     return actions
 
 
+def _ai_can_target(
+    state: GameState, attacker_faction_id: str, target: Unit
+) -> bool:
+    """
+    Stealth-aware AI targeting filter.
+
+    AI is fog-blind for non-stealth enemies (cheaty v0), but stealth-flagged
+    enemies are only targetable if any own unit sits within STEALTH_DETECTION_RADIUS.
+    This lets stealth units genuinely ambush the AI rather than getting
+    instantly enumerated as an attack target.
+    """
+    if not target.unit_type.stealth:
+        return True
+    return any(
+        distance(own.hex, target.hex) <= STEALTH_DETECTION_RADIUS
+        for own in state.units_of(attacker_faction_id)
+    )
+
+
 def _unit_actions(state: GameState, unit: Unit) -> list[Action]:
     """Attack-in-place + move + move-then-attack actions for one unit."""
     actions: list[Action] = []
@@ -181,6 +201,8 @@ def _unit_actions(state: GameState, unit: Unit) -> list[Action]:
     # Attack from current hex.
     if not unit.has_attacked:
         for target in attack_targets(state, unit):
+            if not _ai_can_target(state, unit.faction, target):
+                continue
             actions.append(AttackAction(unit.uid, target.uid))
 
     # Move (optionally followed by attack from new hex).
@@ -197,6 +219,8 @@ def _unit_actions(state: GameState, unit: Unit) -> list[Action]:
                 unit.hex = dest
                 try:
                     for target in attack_targets(state, unit):
+                        if not _ai_can_target(state, unit.faction, target):
+                            continue
                         actions.append(MoveAttackAction(unit.uid, dest, target.uid))
                 finally:
                     unit.hex = orig_hex
@@ -255,6 +279,9 @@ def _score_attack(state, attacker, defender, weights) -> float:
     score = atk_dmg * weights["attack_damage"]
     if atk_dmg >= defender.hp:
         score += weights["attack_kill_bonus"]
+    # Kamikaze units expect to die — skip the counter/suicide penalty entirely.
+    if attacker.unit_type.self_destruct:
+        return score
     score -= counter_dmg * weights["attack_counter_penalty"]
     if counter_dmg >= attacker.hp:
         score -= weights["suicide_penalty"]

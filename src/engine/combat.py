@@ -107,10 +107,15 @@ def predict_exchange(
     The counter uses the defender's *post-hit* HP for scaling, mirroring what
     resolve_attack() will actually do. Used by UI for hover prediction and by
     AI threat eval.
+
+    Self-destruct (kamikaze) attackers explode before the defender can counter,
+    so counter_damage is reported as 0.
     """
     atk_dmg = predict_damage(state, attacker, defender)
     if atk_dmg >= defender.hp:
         return atk_dmg, 0  # defender dies, no counter
+    if attacker.unit_type.self_destruct:
+        return atk_dmg, 0  # attacker explodes — defender never gets to counter
     dist = distance(attacker.hex, defender.hex)
     if not defender.unit_type.in_range(dist):
         return atk_dmg, 0
@@ -184,7 +189,10 @@ def resolve_attack(
     attacker.has_attacked = True
 
     counter = 0
-    if defender.is_alive():
+    if attacker.unit_type.self_destruct:
+        # Kamikaze: attacker explodes after the hit; no counter possible.
+        attacker.apply_damage(attacker.hp)   # → hp 0
+    elif defender.is_alive():
         if defender.unit_type.in_range(dist) and base_damage(
             defender.unit_type.unit_class, attacker.unit_type.unit_class
         ) > 0:

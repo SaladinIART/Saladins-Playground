@@ -45,9 +45,10 @@ class UnitType:
     cost_oil: int
     upkeep_oil: int         # oil consumed per turn while alive
     can_capture: bool       # engineer-class flag: can capture buildings
-    stealth: bool           # invisible beyond 1 hex to enemies (Guerilla units)
+    stealth: bool           # invisible beyond STEALTH_DETECTION_RADIUS to enemies
     flying: bool            # immune to ground-only weapons; ignores terrain costs
     amphibious: bool        # can cross river tiles
+    self_destruct: bool     # if True, attacker dies after a successful attack (kamikaze)
     color: tuple[int, int, int]  # (R, G, B) programmer-art tint
 
     def is_indirect(self) -> bool:
@@ -135,6 +136,7 @@ def load_units(path: Optional[Path] = None) -> dict[str, UnitType]:
             stealth=bool(entry["stealth"]),
             flying=bool(entry["flying"]),
             amphibious=bool(entry["amphibious"]),
+            self_destruct=bool(entry.get("self_destruct", False)),  # back-compat: default False
             color=(int(color[0]), int(color[1]), int(color[2])),
         )
         _registry[ut.id] = ut
