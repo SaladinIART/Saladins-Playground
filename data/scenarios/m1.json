@@ -94,9 +94,9 @@
     {"type_id": "nato_recon",    "faction": "NATO",  "hex": [3, 2]},
 
     {"comment": "--- BRICS starting units ---"},
-    {"type_id": "nato_inf_l",    "faction": "BRICS", "hex": [19, 11]},
-    {"type_id": "nato_engineer", "faction": "BRICS", "hex": [17, 12]},
-    {"type_id": "nato_recon",    "faction": "BRICS", "hex": [18, 10]}
+    {"type_id": "brics_inf_l",    "faction": "BRICS", "hex": [19, 11]},
+    {"type_id": "brics_engineer", "faction": "BRICS", "hex": [17, 12]},
+    {"type_id": "brics_recon",    "faction": "BRICS", "hex": [18, 10]}
   ],
 
   "victory": {

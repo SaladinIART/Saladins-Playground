@@ -111,6 +111,8 @@ def load_units(path: Optional[Path] = None) -> dict[str, UnitType]:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     _registry.clear()
     for entry in raw["unit_types"]:
+        if "id" not in entry:   # skip comment-only dicts (e.g. {"_comment": "..."})
+            continue
         color = tuple(entry["color"])
         ut = UnitType(
             id=entry["id"],

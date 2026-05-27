@@ -10,8 +10,6 @@ Tier flow (v0 — instant, no build queue)
 
 TODO CP-11 note: production queue (multi-turn Research HQ) is deferred to a later
   polish pass; "instant" was the deliberate v0 simplification.
-TODO CP-17/CP-18: filter buildable_units by unit_type.faction once BRICS /
-  Guerilla unit types are added to units.json.
 """
 from __future__ import annotations
 
@@ -37,21 +35,32 @@ MAX_TIER = 3
 
 def buildable_units(faction: "Faction") -> list["UnitType"]:
     """
-    Unit types the faction may currently build (tier <= faction.tier).
+    Unit types the faction may currently build.
+
+    Filters by:
+    - ``unit_type.faction == faction.id``  (own faction's units only)
+    - ``unit_type.tier   <= faction.tier`` (current tech level)
+
     Sorted by (tier, cost_credits) for consistent menu ordering.
     """
     from src.engine.unit import all_units
-    available = [ut for ut in all_units().values() if ut.tier <= faction.tier]
+    available = [
+        ut for ut in all_units().values()
+        if ut.faction == faction.id and ut.tier <= faction.tier
+    ]
     return sorted(available, key=lambda ut: (ut.tier, ut.cost_credits))
 
 
-def all_displayable_units() -> list["UnitType"]:
+def all_displayable_units(faction_id: str) -> list["UnitType"]:
     """
-    All known unit types sorted by (tier, cost_credits).
-    Used to populate the full build menu — including locked rows.
+    All unit types belonging to *faction_id*, sorted by (tier, cost_credits).
+
+    Used to populate the full build menu (including tier-locked rows).
+    Pass ``faction.id`` from the active faction.
     """
     from src.engine.unit import all_units
-    return sorted(all_units().values(), key=lambda ut: (ut.tier, ut.cost_credits))
+    owned = [ut for ut in all_units().values() if ut.faction == faction_id]
+    return sorted(owned, key=lambda ut: (ut.tier, ut.cost_credits))
 
 
 # ---------------------------------------------------------------------------

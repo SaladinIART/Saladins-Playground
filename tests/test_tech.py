@@ -77,11 +77,26 @@ def test_buildable_units_sorted_by_tier_then_cost():
 
 
 def test_all_displayable_units_includes_locked():
-    """all_displayable_units returns every unit regardless of tier."""
-    all_u = all_displayable_units()
+    """all_displayable_units returns every unit for a faction regardless of tier."""
+    all_u = all_displayable_units("NATO")
     tiers_present = {ut.tier for ut in all_u}
     assert 1 in tiers_present
-    assert 2 in tiers_present   # T2 units exist in NATO roster
+    assert 2 in tiers_present          # T2 units exist in NATO roster
+    assert all(ut.faction == "NATO" for ut in all_u)
+
+
+def test_all_displayable_units_brics():
+    """all_displayable_units for BRICS returns only BRICS units."""
+    brics_u = all_displayable_units("BRICS")
+    assert len(brics_u) >= 1
+    assert all(ut.faction == "BRICS" for ut in brics_u)
+
+
+def test_all_displayable_units_factions_are_separate():
+    """NATO and BRICS unit lists must not overlap."""
+    nato_ids  = {ut.id for ut in all_displayable_units("NATO")}
+    brics_ids = {ut.id for ut in all_displayable_units("BRICS")}
+    assert nato_ids.isdisjoint(brics_ids)
 
 
 # ---------------------------------------------------------------------------

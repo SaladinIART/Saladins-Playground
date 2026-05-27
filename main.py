@@ -491,7 +491,7 @@ def _draw_build_menu(
     UPGR_H  = 36
     FOOT_H  = 22
 
-    display_units = all_displayable_units()
+    display_units = all_displayable_units(faction.id)
     has_upgrade   = can_upgrade_tier(faction)
     PANEL_H = (HDR_H + PAD
                + len(display_units) * ITEM_H
