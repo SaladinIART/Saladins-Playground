@@ -92,6 +92,12 @@ class Camera:
 
         return False
 
+    def center_on(self, h: Hex) -> None:
+        """Pan so that hex *h* is centred in the viewport."""
+        wx, wy = axial_to_pixel(h, self.hex_size)
+        self.offset_x = self.screen_w / 2 - wx
+        self.offset_y = self.screen_h / 2 - wy
+
     def handle_keys(self, keys: pygame.key.ScancodeWrapper, dt: float) -> bool:
         """WASD pan. Call once per frame with delta-time in seconds."""
         dx = dy = 0.0

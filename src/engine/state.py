@@ -309,6 +309,25 @@ class GameState:
     # Helpers
     # ------------------------------------------------------------------
 
+    def next_actionable_unit(
+        self, faction_id: str, current_uid: Optional[int] = None
+    ) -> Optional[Unit]:
+        """
+        Return the next unit of *faction_id* that can still act this turn.
+
+        If *current_uid* is given and present in the actionable list, the
+        unit **after** it is returned (wrapping around).  Otherwise the first
+        actionable unit is returned.  Returns ``None`` if no units can act.
+        """
+        units = [u for u in self.units_of(faction_id) if u.can_act()]
+        if not units:
+            return None
+        if current_uid is None or not any(u.uid == current_uid for u in units):
+            return units[0]
+        uids = [u.uid for u in units]
+        idx  = uids.index(current_uid)
+        return units[(idx + 1) % len(units)]
+
     def iter_units_at(self, hexes: Iterable[Hex]) -> Iterator[Unit]:
         hexset = set(hexes)
         for u in self.units.values():

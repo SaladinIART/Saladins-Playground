@@ -302,3 +302,43 @@ def save_slot(
     p = slot_path(scenario_slug, slot, saves_dir)
     save_state(state, p, scenario_slug=scenario_slug)
     return p
+
+
+# ---------------------------------------------------------------------------
+# Save discovery (used by the load-game menu in main.py)
+# ---------------------------------------------------------------------------
+
+def _read_save_meta(path: Path, label: str) -> dict[str, Any]:
+    """Read the minimal header of one save file for display in a load menu."""
+    if not path.exists():
+        return {"path": path, "label": label, "turn": None, "exists": False}
+    try:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {
+            "path":   path,
+            "label":  label,
+            "turn":   data.get("turn_number"),
+            "exists": True,
+        }
+    except Exception:
+        return {"path": path, "label": label, "turn": None, "exists": True}
+
+
+def list_saves(
+    scenario_slug: str,
+    saves_dir: Path = SAVE_DIR,
+) -> list[dict[str, Any]]:
+    """Return a list of save-file metadata dicts for *scenario_slug*.
+
+    Order: autosave first, then slots 1..NUM_SLOTS.  Each dict has::
+
+        {"path": Path, "label": str, "turn": int|None, "exists": bool}
+    """
+    results: list[dict[str, Any]] = []
+    results.append(_read_save_meta(autosave_path(scenario_slug, saves_dir), "Autosave"))
+    for slot in range(1, NUM_SLOTS + 1):
+        results.append(
+            _read_save_meta(slot_path(scenario_slug, slot, saves_dir), f"Slot {slot}")
+        )
+    return results
