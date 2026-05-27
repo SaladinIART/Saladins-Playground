@@ -161,3 +161,13 @@ def units_for_tier(faction: str, max_tier: int) -> list[UnitType]:
         ut for ut in all_units().values()
         if ut.faction == faction and ut.tier <= max_tier
     ]
+
+
+def advance_uid_counter(min_uid: int) -> None:
+    """Advance the global UID counter so the next auto-assigned UID is >= min_uid.
+
+    Call this after loading a saved game that contains pre-existing units to
+    prevent the new-unit counter from issuing UIDs that collide with saved ones.
+    """
+    global _id_counter
+    _id_counter = count(min_uid)

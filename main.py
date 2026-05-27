@@ -19,6 +19,12 @@ import pygame
 
 from src.ai.heuristic import Action, describe, take_turn_steps
 from src.ai.personality import from_dict as personality_from_dict, Personality
+from src.persistence.save import (
+    NUM_SLOTS,
+    load_state,
+    save_autosave,
+    save_slot,
+)
 from src.engine.combat import (
     attack_targets,
     load_damage_matrix,
@@ -55,6 +61,12 @@ BG = (18, 24, 38)
 # Default scenario to load.  CP-16 will make this selectable from a menu.
 DEFAULT_SCENARIO = Path("data/scenarios/m1.json")
 
+# Slug used for save-file naming (= stem of scenario path, e.g. "m1").
+_SCENARIO_SLUG: str = DEFAULT_SCENARIO.stem
+
+# Manual save slot cycling: S key steps through 1..NUM_SLOTS.
+_current_save_slot: int = 1
+
 # Module-level mutable: populated by _load_initial_state(), read by the AI
 # step launcher to pass the right personality per faction.
 _scenario_meta: dict[str, Any] = {"name": "", "description": "", "personalities": {}}
@@ -78,6 +90,15 @@ def _personality_for(faction_id: str) -> Optional[Personality]:
     if pd is None:
         return None
     return personality_from_dict(pd)
+
+
+def _do_autosave(state: GameState) -> None:
+    """Silently write autosave; logs path to stdout; swallows I/O errors."""
+    try:
+        p = save_autosave(state, _SCENARIO_SLUG)
+        print(f"[autosave] {p}")
+    except Exception as exc:  # pragma: no cover
+        print(f"[autosave FAILED] {exc}")
 
 
 def _draw_game_over(
@@ -368,6 +389,7 @@ async def main() -> None:
                     path_preview = []
                     attack_target_uids = set()
                     state.end_turn()
+                    _do_autosave(state)
                     print(f"End turn → {state.active_faction.id} "
                           f"(turn {state.turn_number}, "
                           f"credits={state.active_faction.credits}, "
@@ -376,6 +398,14 @@ async def main() -> None:
                         _pers = _personality_for(state.active_faction.id)
                         ai_steps = take_turn_steps(state, state.active_faction.id, _pers)
                         ai_timer = 0.0
+                elif event.key == pygame.K_s:
+                    global _current_save_slot
+                    try:
+                        p = save_slot(state, _current_save_slot, _SCENARIO_SLUG)
+                        print(f"[save] slot {_current_save_slot} → {p}")
+                    except Exception as exc:
+                        print(f"[save FAILED] {exc}")
+                    _current_save_slot = (_current_save_slot % NUM_SLOTS) + 1
                 elif event.key == pygame.K_f:
                     fog_enabled = not fog_enabled
                     print(f"Fog {'on' if fog_enabled else 'off'}")
@@ -511,6 +541,7 @@ async def main() -> None:
                     ai_steps = None
                     if not state.game_over:
                         state.end_turn()
+                        _do_autosave(state)
                         print(f"End turn → {state.active_faction.id} "
                               f"(turn {state.turn_number}, "
                               f"credits={state.active_faction.credits}, "
@@ -634,7 +665,7 @@ async def main() -> None:
             screen.blit(hov_lbl, (12, HEIGHT - 22))
 
         # Help (bottom-right)
-        help_txt = "SPACE end turn  •  click HQ to build  •  F fog  •  WASD pan  •  scroll zoom"
+        help_txt = "SPACE end turn  •  S save slot  •  click HQ to build  •  F fog  •  WASD pan  •  scroll zoom"
         h_lbl = font_ui.render(help_txt, True, (120, 120, 140))
         screen.blit(h_lbl, (WIDTH - h_lbl.get_width() - 12, HEIGHT - 22))
 

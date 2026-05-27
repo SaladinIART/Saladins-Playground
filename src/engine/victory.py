@@ -246,3 +246,41 @@ def victory_config_from_dict(d: dict[str, Any]) -> VictoryConfig:
         lose_conditions=[condition_from_dict(c) for c in d.get("lose_conditions", [])],
         lose_mode=d.get("lose_mode", "any"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Serialisation (inverse of the from_dict functions above — used by save.py)
+# ---------------------------------------------------------------------------
+
+def condition_to_dict(c: "Condition") -> dict[str, Any]:
+    """Convert a Condition instance back to the JSON-compatible dict format."""
+    if isinstance(c, DestroyHQ):
+        return {"type": "destroy_hq", "target_faction": c.target_faction}
+    if isinstance(c, HoldTiles):
+        return {
+            "type": "hold_tiles",
+            "target_hexes": [[h.q, h.r] for h in c.target_hexes],
+            "turns_required": c.turns_required,
+            "consecutive_turns": c.consecutive_turns,   # stateful — must round-trip
+        }
+    if isinstance(c, OwnAllOfTerrain):
+        return {"type": "own_all_terrain", "terrain_id": c.terrain_id}
+    if isinstance(c, EliminateFaction):
+        return {"type": "eliminate_faction", "target_faction": c.target_faction}
+    if isinstance(c, DestroyUnitType):
+        return {
+            "type": "destroy_unit_type",
+            "type_id": c.type_id,
+            "owner_faction": c.owner_faction,
+        }
+    raise TypeError(f"Cannot serialise unknown condition type: {type(c).__name__!r}")
+
+
+def victory_config_to_dict(cfg: VictoryConfig) -> dict[str, Any]:
+    """Convert a VictoryConfig back to the JSON-compatible dict format."""
+    return {
+        "win_conditions":  [condition_to_dict(c) for c in cfg.win_conditions],
+        "win_mode":        cfg.win_mode,
+        "lose_conditions": [condition_to_dict(c) for c in cfg.lose_conditions],
+        "lose_mode":       cfg.lose_mode,
+    }
