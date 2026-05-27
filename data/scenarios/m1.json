@@ -1,0 +1,116 @@
+{
+  "name": "Mission 1: First Contact",
+  "description": "NATO forces detect a BRICS armoured column advancing into the border region. Capture the BRICS field HQ to end the incursion before they can entrench. Control the central river crossing at all costs.",
+
+  "map": {
+    "width": 21,
+    "height": 15,
+    "default_terrain": "plain",
+    "tiles": [
+      {"comment": "--- NATO owned assets ---"},
+      {"hex": [2, 3], "terrain": "hq",       "owner": "NATO"},
+      {"hex": [3, 3], "terrain": "city",     "owner": "NATO"},
+      {"hex": [2, 4], "terrain": "oil_well", "owner": "NATO"},
+
+      {"comment": "--- BRICS owned assets ---"},
+      {"hex": [18, 11], "terrain": "hq",       "owner": "BRICS"},
+      {"hex": [17, 11], "terrain": "city",     "owner": "BRICS"},
+      {"hex": [18, 12], "terrain": "oil_well", "owner": "BRICS"},
+
+      {"comment": "--- Neutral contested objectives ---"},
+      {"hex": [9,  5], "terrain": "city"},
+      {"hex": [12, 9], "terrain": "city"},
+      {"hex": [10, 7], "terrain": "oil_well"},
+
+      {"comment": "--- Forest: NATO-side approach cover ---"},
+      {"hex": [5, 4], "terrain": "forest"},
+      {"hex": [5, 5], "terrain": "forest"},
+      {"hex": [6, 4], "terrain": "forest"},
+      {"hex": [6, 5], "terrain": "forest"},
+
+      {"comment": "--- Mountains: northern barrier forces bridge use ---"},
+      {"hex": [10, 3], "terrain": "mountain"},
+      {"hex": [11, 3], "terrain": "mountain"},
+      {"hex": [11, 4], "terrain": "mountain"},
+      {"hex": [12, 4], "terrain": "mountain"},
+
+      {"comment": "--- River: central chokepoint with bridge at r=7 ---"},
+      {"hex": [8, 5], "terrain": "river"},
+      {"hex": [8, 6], "terrain": "river"},
+      {"hex": [8, 7], "terrain": "bridge"},
+      {"hex": [8, 8], "terrain": "river"},
+      {"hex": [8, 9], "terrain": "river"},
+
+      {"comment": "--- Forest: BRICS-side approach cover ---"},
+      {"hex": [14, 8], "terrain": "forest"},
+      {"hex": [14, 9], "terrain": "forest"},
+      {"hex": [15, 8], "terrain": "forest"},
+
+      {"comment": "--- Roads: northern corridor (NATO side) ---"},
+      {"hex": [4, 3], "terrain": "road"},
+      {"hex": [5, 3], "terrain": "road"},
+      {"hex": [6, 3], "terrain": "road"},
+      {"hex": [7, 3], "terrain": "road"},
+      {"hex": [7, 4], "terrain": "road"},
+
+      {"comment": "--- Roads: southern corridor through bridge to center ---"},
+      {"hex": [9,  6], "terrain": "road"},
+      {"hex": [10, 6], "terrain": "road"},
+      {"hex": [11, 7], "terrain": "road"},
+      {"hex": [12, 8], "terrain": "road"},
+      {"hex": [13, 8], "terrain": "road"}
+    ]
+  },
+
+  "factions": [
+    {
+      "id":      "NATO",
+      "name":    "NATO",
+      "color":   [30, 80, 200],
+      "credits": 600,
+      "oil":     5,
+      "tier":    1,
+      "is_ai":   false
+    },
+    {
+      "id":      "BRICS",
+      "name":    "BRICS",
+      "color":   [200, 30, 30],
+      "credits": 600,
+      "oil":     5,
+      "tier":    1,
+      "is_ai":   true,
+      "personality": {
+        "name": "balanced",
+        "weights": {}
+      }
+    }
+  ],
+
+  "units": [
+    {"comment": "--- NATO starting units ---"},
+    {"type_id": "nato_inf_l",    "faction": "NATO",  "hex": [1, 3]},
+    {"type_id": "nato_engineer", "faction": "NATO",  "hex": [2, 2]},
+    {"type_id": "nato_recon",    "faction": "NATO",  "hex": [3, 2]},
+
+    {"comment": "--- BRICS starting units ---"},
+    {"type_id": "nato_inf_l",    "faction": "BRICS", "hex": [19, 11]},
+    {"type_id": "nato_engineer", "faction": "BRICS", "hex": [17, 12]},
+    {"type_id": "nato_recon",    "faction": "BRICS", "hex": [18, 10]}
+  ],
+
+  "victory": {
+    "NATO": {
+      "win_conditions":  [{"type": "destroy_hq", "target_faction": "BRICS"}],
+      "win_mode": "any",
+      "lose_conditions": [{"type": "destroy_hq", "target_faction": "NATO"}],
+      "lose_mode": "any"
+    },
+    "BRICS": {
+      "win_conditions":  [{"type": "destroy_hq", "target_faction": "NATO"}],
+      "win_mode": "any",
+      "lose_conditions": [{"type": "destroy_hq", "target_faction": "BRICS"}],
+      "lose_mode": "any"
+    }
+  }
+}
