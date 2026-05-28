@@ -285,12 +285,19 @@ class HexRenderer:
         reachable: dict,
         path: list,
         selected_hex: Optional["Hex"],
+        costs: Optional[dict] = None,
     ) -> None:
         """
         Draw a semi-transparent overlay showing:
           - All reachable hexes in blue.
           - The current hover path in yellow.
           - The selected unit's hex with a white ring.
+          - Optional MP-cost numbers centred on each reachable hex (CP-31).
+
+        *costs* is a ``dict[Hex, int]`` mapping destination -> MP spent.
+        Numbers are only drawn when ``hex_size >= 24`` to avoid clutter at
+        small zoom levels.  Pass the same ``movement.reachable`` dict that
+        the caller already has; no extra computation needed.
         """
         overlay = pygame.Surface(
             (self.camera.screen_w, self.camera.screen_h), pygame.SRCALPHA
@@ -327,6 +334,31 @@ class HexRenderer:
 
         surface.blit(overlay, (0, 0))
 
+        # 4. MP-cost numbers -- drawn directly on *surface* (not the SRCALPHA
+        #    overlay) so alpha-blending doesn't muddy the digits.
+        #    Only shown at meaningful zoom; skip hexes on the current path
+        #    (the yellow highlight already makes them obvious).
+        if costs is not None and self.camera.hex_size >= 24:
+            cost_font_size = max(9, int(self.camera.hex_size * 0.30))
+            cost_font = self._get_font(cost_font_size)
+            cost_surf = pygame.Surface(
+                (self.camera.screen_w, self.camera.screen_h), pygame.SRCALPHA
+            )
+            for h, mp in costs.items():
+                if h in path_set or h == selected_hex:
+                    continue
+                cx, cy = self.camera.hex_to_screen(h)
+                if not self._on_screen(cx, cy):
+                    continue
+                lbl = cost_font.render(str(mp), True, (200, 230, 255))
+                lbl.set_alpha(200)
+                cost_surf.blit(
+                    lbl,
+                    (int(cx - lbl.get_width() / 2),
+                     int(cy - lbl.get_height() / 2)),
+                )
+            surface.blit(cost_surf, (0, 0))
+
     def draw_attack_overlay(
         self,
         surface: pygame.Surface,
@@ -349,3 +381,115 @@ class HexRenderer:
             pygame.draw.polygon(overlay, fill, poly)
             pygame.draw.polygon(overlay, border, poly, width)
         surface.blit(overlay, (0, 0))
+
+    def draw_ai_trace(
+        self,
+        surface: pygame.Surface,
+        actions: list,          # list[Action] -- oldest first, newest last
+        state: "object",        # GameState -- used to look up unit positions
+    ) -> None:
+        """Draw faded arrows showing the last N AI actions (CP-32).
+
+        Each action type is handled differently:
+          - MoveAttackAction  -> arrow from unit's *current* position to dest hex;
+                                 a red dot on target_uid's hex when attack included
+          - AttackAction      -> red dot pulsing between attacker and defender
+          - BuildAction       -> a small cyan diamond on the HQ hex
+          - UpgradeTierAction -> ignored (no meaningful position)
+
+        Oldest actions are most transparent; newest are most opaque.
+        Arrows are always shown regardless of fog (the player just saw them).
+        """
+        n = len(actions)
+        if n == 0:
+            return
+
+        overlay = pygame.Surface(
+            (self.camera.screen_w, self.camera.screen_h), pygame.SRCALPHA
+        )
+
+        for idx, action in enumerate(actions):
+            # Newest = index n-1 -> alpha 200; oldest = index 0 -> alpha 40
+            t = (idx + 1) / n   # 1/n .. 1.0
+            alpha = int(40 + 160 * t)
+            arrow_col  = (160, 220, 255, alpha)   # blue-white
+            attack_col = (255,  80,  80, alpha)   # red
+
+            # Delayed import to avoid circular dep at module level
+            from src.ai.heuristic import (
+                AttackAction,
+                MoveAttackAction,
+                BuildAction,
+                UpgradeTierAction,
+            )
+
+            if isinstance(action, MoveAttackAction):
+                # Unit may have moved; look up its current hex from state
+                unit = getattr(state, "units", {}).get(action.unit_uid)
+                src_h = unit.hex if unit is not None else None
+                dst_h = action.dest
+                if src_h is not None and src_h != dst_h:
+                    sx, sy = self.camera.hex_to_screen(src_h)
+                    dx, dy = self.camera.hex_to_screen(dst_h)
+                    if self._on_screen(sx, sy) or self._on_screen(dx, dy):
+                        self._draw_arrow(overlay, (sx, sy), (dx, dy), arrow_col, 3)
+                # Red dot on target if it was an attack move
+                if action.target_uid is not None:
+                    tgt = getattr(state, "units", {}).get(action.target_uid)
+                    if tgt is not None:
+                        tx, ty = self.camera.hex_to_screen(tgt.hex)
+                        if self._on_screen(tx, ty):
+                            r = max(4, int(self.camera.hex_size * 0.18))
+                            pygame.draw.circle(overlay, attack_col, (int(tx), int(ty)), r)
+
+            elif isinstance(action, AttackAction):
+                atk = getattr(state, "units", {}).get(action.attacker_uid)
+                dfn = getattr(state, "units", {}).get(action.defender_uid)
+                if atk is not None and dfn is not None:
+                    sx, sy = self.camera.hex_to_screen(atk.hex)
+                    dx, dy = self.camera.hex_to_screen(dfn.hex)
+                    if self._on_screen(sx, sy) or self._on_screen(dx, dy):
+                        self._draw_arrow(overlay, (sx, sy), (dx, dy), attack_col, 3)
+
+            elif isinstance(action, BuildAction):
+                bx, by = self.camera.hex_to_screen(action.hq_hex)
+                if self._on_screen(bx, by):
+                    r = max(5, int(self.camera.hex_size * 0.22))
+                    # Cyan diamond (4-point star via two rotated rect approximation)
+                    diamond = [
+                        (int(bx),     int(by) - r),
+                        (int(bx) + r, int(by)),
+                        (int(bx),     int(by) + r),
+                        (int(bx) - r, int(by)),
+                    ]
+                    pygame.draw.polygon(overlay, (80, 220, 220, alpha), diamond)
+
+        surface.blit(overlay, (0, 0))
+
+    @staticmethod
+    def _draw_arrow(
+        surface: pygame.Surface,
+        start: tuple,
+        end: tuple,
+        color: tuple,
+        width: int = 2,
+    ) -> None:
+        """Draw a line with a small arrowhead at *end*."""
+        sx, sy = start; ex, ey = end
+        pygame.draw.line(surface, color, (int(sx), int(sy)), (int(ex), int(ey)), width)
+
+        # Arrowhead: two short lines fanning back from the tip
+        dx = ex - sx; dy = ey - sy
+        length = math.hypot(dx, dy)
+        if length < 1:
+            return
+        ux = dx / length; uy = dy / length   # unit vector toward tip
+        # Perpendicular
+        px = -uy; py = ux
+        head = 10   # px
+        fan  = 0.40 # perpendicular spread
+        for sign in (1, -1):
+            hx = ex - ux * head + sign * px * head * fan
+            hy = ey - uy * head + sign * py * head * fan
+            pygame.draw.line(surface, color, (int(ex), int(ey)),
+                             (int(hx), int(hy)), width)

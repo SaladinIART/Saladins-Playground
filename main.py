@@ -29,6 +29,8 @@ from typing import Any, Iterator, Optional
 
 import pygame
 
+import collections
+
 from src.audio.sounds import SoundManager
 from src.ai.heuristic import Action, describe, take_turn_steps
 from src.ai.personality import from_dict as personality_from_dict, Personality
@@ -1223,6 +1225,8 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
     save_flash:         float                         = 0.0   # countdown for save msg
     save_flash_msg:     str                           = ""
     floater_layer:      FloaterLayer                  = FloaterLayer()
+    # CP-32: recent AI actions shown as faded arrows after the AI turn ends.
+    recent_ai_actions:  collections.deque             = collections.deque(maxlen=5)
     confirm_end_turn:   bool                          = False  # show "units left to act" modal
     confirm_buttons:    list[tuple[pygame.Rect, str]] = []
     action_buttons:     list[tuple[pygame.Rect, str]] = []  # Defend/Retreat panel buttons
@@ -1236,6 +1240,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
         bm_panel_rect = None; bm_items = []; go_buttons = []
         et_btn_rect = None; ai_steps = None; ai_timer = 0.0; save_flash = 0.0
         floater_layer.clear()
+        recent_ai_actions.clear()
 
     def _start_playing(new_state: GameState) -> None:
         nonlocal state, screen_state
@@ -1295,6 +1300,9 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
               f"oil={state.active_faction.oil})")
         if state.active_faction.is_ai and not state.game_over:
             _kick_ai()
+        else:
+            # Player's turn starts -- clear the AI action trace (CP-32)
+            recent_ai_actions.clear()
 
     # --- Unit orders (Defend / Retreat) ---
     def _order_defend() -> None:
@@ -1811,6 +1819,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                     try:
                         a = next(ai_steps)
                         print(f"  AI {state.active_faction.id}: {describe(a)}")
+                        recent_ai_actions.append(a)   # CP-32: record for trace
                     except StopIteration:
                         ai_steps = None
                         if not state.game_over:
@@ -1832,6 +1841,8 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                                   f"oil={state.active_faction.oil})")
                             if state.active_faction.is_ai and not state.game_over:
                                 _kick_ai()
+                            else:
+                                recent_ai_actions.clear()   # CP-32: player's turn
 
             # Path preview
             if selected_unit is not None and movement is not None:
@@ -1887,7 +1898,8 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
             )
             if selected_unit is not None and movement is not None:
                 renderer.draw_movement_overlay(
-                    screen, movement.reachable, path_preview, selected_unit.hex
+                    screen, movement.reachable, path_preview, selected_unit.hex,
+                    costs=movement.reachable,   # CP-31: show MP cost on each hex
                 )
             if selected_unit is not None and attack_target_uids:
                 target_hexes = [
@@ -1896,6 +1908,10 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                 ]
                 renderer.draw_attack_overlay(screen, target_hexes, hovered_hex=hovered)
             renderer.draw_units(screen, list(state.units.values()), can_see=_can_see)
+
+            # AI action trace arrows -- only visible after an AI turn (CP-32)
+            if recent_ai_actions:
+                renderer.draw_ai_trace(screen, list(recent_ai_actions), state)
 
             # Floating damage / heal / level-up labels (CP-29 / CP-30)
             floater_layer.draw(screen, font_ui)
