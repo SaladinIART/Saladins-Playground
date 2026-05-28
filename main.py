@@ -40,6 +40,7 @@ from src.persistence.save import (
     load_state,
     save_autosave,
     save_slot,
+    thumbnail_path,
 )
 from src.engine.combat import (
     attack_targets,
@@ -253,11 +254,21 @@ def _apply_difficulty(
             scenario_meta.setdefault("personalities", {})[faction.id] = personality
 
 
-def _do_autosave(state: GameState) -> None:
-    """Write autosave silently; print path or error to stdout."""
+def _do_autosave(state: GameState, screen_surf: "pygame.Surface | None" = None) -> None:
+    """Write autosave silently; print path or error to stdout.
+
+    *screen_surf*, if provided, is scaled to 200x120 and saved as a PNG
+    thumbnail alongside the JSON (CP-35).
+    """
     try:
         p = save_autosave(state, _SCENARIO_SLUG)
         print(f"[autosave] {p}")
+        if screen_surf is not None:
+            try:
+                _thumb = pygame.transform.smoothscale(screen_surf, (200, 120))
+                pygame.image.save(_thumb, str(thumbnail_path(p)))
+            except Exception:
+                pass
     except Exception as exc:          # pragma: no cover
         print(f"[autosave FAILED] {exc}")
 
@@ -500,7 +511,9 @@ def _draw_load_menu(
     sw, sh = surface.get_size()
     mx, my = pygame.mouse.get_pos()
 
-    PANEL_W, PANEL_H = 480, 60 + len(saves_info) * 56 + 80
+    # CP-35: rows are taller when thumbnails are present
+    _THUMB_W, _THUMB_H = 80, 48   # displayed size inside each row
+    PANEL_W, PANEL_H = 520, 60 + len(saves_info) * 56 + 80
     px = (sw - PANEL_W) // 2
     py = (sh - PANEL_H) // 2
 
@@ -513,16 +526,17 @@ def _draw_load_menu(
     pygame.draw.line(panel, (50, 80, 140), (16, 56), (PANEL_W - 16, 56))
 
     click_targets: list[tuple[pygame.Rect, str]] = []
-    BTN_W, BTN_H = PANEL_W - 40, 44
+    BTN_W, BTN_H = PANEL_W - 40, 48
     y = 68
 
     for info in saves_info:
-        exists   = info["exists"]
-        turn     = info["turn"]
-        label    = info["label"]
-        turn_txt = f"Turn {turn}" if turn is not None else "(empty)"
-        scr_rect = pygame.Rect(px + 20, py + y, BTN_W, BTN_H)
-        hover    = scr_rect.collidepoint(mx, my) and exists
+        exists    = info["exists"]
+        turn      = info["turn"]
+        label     = info["label"]
+        turn_txt  = f"Turn {turn}" if turn is not None else "(empty)"
+        thumb_p   = info.get("thumb_path")
+        scr_rect  = pygame.Rect(px + 20, py + y, BTN_W, BTN_H)
+        hover     = scr_rect.collidepoint(mx, my) and exists
         if exists:
             bg = (36, 68, 120) if hover else (24, 44, 80)
             border = (90, 150, 230) if hover else (60, 100, 160)
@@ -532,12 +546,29 @@ def _draw_load_menu(
         row = pygame.Surface((BTN_W, BTN_H), pygame.SRCALPHA)
         row.fill((*bg, 220))
         pygame.draw.rect(row, border, (0, 0, BTN_W, BTN_H), 1)
+
+        # CP-35: thumbnail on the right side of the row
+        txt_x = 12
+        if thumb_p is not None and thumb_p.is_file():
+            try:
+                _t = pygame.image.load(str(thumb_p))
+                _t = pygame.transform.smoothscale(_t, (_THUMB_W, _THUMB_H))
+                row.blit(_t, (BTN_W - _THUMB_W - 4, (BTN_H - _THUMB_H) // 2))
+            except Exception:
+                pass   # bad/missing PNG -- fall back to text-only
+        else:
+            # Placeholder block when no thumbnail
+            _ph_x = BTN_W - _THUMB_W - 4
+            _ph_y = (BTN_H - _THUMB_H) // 2
+            pygame.draw.rect(row, (30, 38, 55), (_ph_x, _ph_y, _THUMB_W, _THUMB_H))
+            pygame.draw.rect(row, border,       (_ph_x, _ph_y, _THUMB_W, _THUMB_H), 1)
+
         nl = font_ui.render(f"{label:<12}{turn_txt}", True, tc)
-        row.blit(nl, (12, (BTN_H - nl.get_height()) // 2))
+        row.blit(nl, (txt_x, (BTN_H - nl.get_height()) // 2))
         panel.blit(row, (20, y))
         if exists:
             click_targets.append((scr_rect, str(info["path"])))
-        y += BTN_H + 10
+        y += BTN_H + 8
 
     # Back button
     BB_W, BB_H = 140, 44
@@ -1227,6 +1258,11 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
     floater_layer:      FloaterLayer                  = FloaterLayer()
     # CP-32: recent AI actions shown as faded arrows after the AI turn ends.
     recent_ai_actions:  collections.deque             = collections.deque(maxlen=5)
+    # CP-33: hex pinned by right-click inspect; cleared on left-click.
+    pinned_tooltip_hex: Optional[Hex]                 = None
+    # CP-34: volume cycle flash (same pattern as save_flash).
+    vol_flash:          float                         = 0.0
+    vol_flash_msg:      str                           = ""
     confirm_end_turn:   bool                          = False  # show "units left to act" modal
     confirm_buttons:    list[tuple[pygame.Rect, str]] = []
     action_buttons:     list[tuple[pygame.Rect, str]] = []  # Defend/Retreat panel buttons
@@ -1241,6 +1277,8 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
         et_btn_rect = None; ai_steps = None; ai_timer = 0.0; save_flash = 0.0
         floater_layer.clear()
         recent_ai_actions.clear()
+        nonlocal pinned_tooltip_hex
+        pinned_tooltip_hex = None
 
     def _start_playing(new_state: GameState) -> None:
         nonlocal state, screen_state
@@ -1281,7 +1319,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
         path_preview = []; attack_target_uids = set()
         audio.play_sfx("end_turn")
         state.end_turn()
-        _do_autosave(state)
+        _do_autosave(state, screen)
         # Check win/lose BEFORE playing music for the new faction.
         if state.game_over:
             outcome = state.outcomes.get(HUMAN_FACTION)
@@ -1623,6 +1661,12 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                         try:
                             assert state is not None
                             p = save_slot(state, _current_save_slot, _SCENARIO_SLUG)
+                            # CP-35: save a 200x120 thumbnail alongside the JSON
+                            try:
+                                _thumb = pygame.transform.smoothscale(screen, (200, 120))
+                                pygame.image.save(_thumb, str(thumbnail_path(p)))
+                            except Exception:
+                                pass   # thumbnail failure must never break the save
                             save_flash = 2.0
                             save_flash_msg = f"Saved slot {_current_save_slot}"
                             print(f"[save] slot {_current_save_slot} -> {p}")
@@ -1635,12 +1679,29 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                         print(f"Fog {'on' if fog_enabled else 'off'}")
 
                     elif event.key == pygame.K_m:
-                        audio.toggle_mute()
-                        print(f"Audio {'muted' if audio.is_muted else 'unmuted'}")
+                        # CP-34: cycle volume 100->75->50->25->0->100...
+                        _VOL_STEPS = [1.0, 0.75, 0.50, 0.25, 0.0]
+                        _cur = audio.master_volume
+                        _ci  = min(
+                            range(len(_VOL_STEPS)),
+                            key=lambda i: abs(_VOL_STEPS[i] - _cur),
+                        )
+                        _nv = _VOL_STEPS[(_ci + 1) % len(_VOL_STEPS)]
+                        audio.set_volume(_nv)
+                        # Force-mute the pygame music channel at 0%
+                        if _nv == 0.0 and not audio.is_muted:
+                            audio.toggle_mute()
+                        elif _nv > 0.0 and audio.is_muted:
+                            audio.toggle_mute()
+                        pct = int(_nv * 100)
+                        vol_flash = 1.2
+                        vol_flash_msg = f"Volume {pct}%" if pct > 0 else "Muted"
+                        print(f"Volume -> {pct}%")
 
                 # ? Mouse ?
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     mx, my = pygame.mouse.get_pos()
+                    pinned_tooltip_hex = None   # CP-33: any left-click clears pin
 
                     # Confirm modal takes priority over everything.
                     if confirm_end_turn:
@@ -1805,6 +1866,10 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
 
                 else:
                     camera.handle_event(event)
+                    # CP-33: right-click inspect -- pin tooltip to the clicked hex.
+                    if camera.take_right_click() and state is not None:
+                        _rc_h = camera.screen_to_hex(*pygame.mouse.get_pos())
+                        pinned_tooltip_hex = _rc_h
 
         # ? Per-frame updates (playing only) ?
         if screen_state == "playing" and state is not None:
@@ -1825,7 +1890,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                         if not state.game_over:
                             audio.play_sfx("end_turn")
                             state.end_turn()
-                            _do_autosave(state)
+                            _do_autosave(state, screen)
                             if state.game_over:
                                 from src.engine.victory import Outcome as _Outcome
                                 o = state.outcomes.get(HUMAN_FACTION)
@@ -1855,6 +1920,9 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
             # Save flash countdown
             if save_flash > 0:
                 save_flash = max(0.0, save_flash - dt)
+            # Volume flash countdown (CP-34)
+            if vol_flash > 0:
+                vol_flash = max(0.0, vol_flash - dt)
 
         # ? Render ?
         screen.fill(BG)
@@ -2052,6 +2120,11 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                 fl = font_ui.render(save_flash_msg, True, (120, 220, 120))
                 screen.blit(fl, (sw - fl.get_width() - 14, sh - 60))
 
+            # Volume flash (CP-34) -- stacked just above save flash
+            if vol_flash > 0:
+                vl = font_ui.render(vol_flash_msg, True, (180, 200, 255))
+                screen.blit(vl, (sw - vl.get_width() - 14, sh - 80))
+
             # FPS + hover (bottom-left)
             fps_lbl = font_ui.render(
                 f"FPS {clock.get_fps():.0f}", True, (160, 160, 160)
@@ -2063,22 +2136,30 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                 )
                 screen.blit(hov_lbl, (12, sh - 22))
 
-            # Help (bottom-right)
-            mute_indicator = "  [MUTED]" if audio.is_muted else ""
+            # Help (bottom-right) -- CP-34: show volume % instead of [MUTED]
+            _vol_pct = int(audio.master_volume * 100)
+            _vol_ind = (f"  [Vol:{_vol_pct}%]" if _vol_pct < 100 else "")
+            if audio.is_muted:
+                _vol_ind = "  [MUTED]"
             help_txt = ("E end  *  Tab next  *  H hunker  *  R retreat  "
-                        f"*  F5 save  *  HQ build  *  F fog  *  M mute{mute_indicator}"
+                        f"*  F5 save  *  HQ build  *  F fog  *  M vol{_vol_ind}"
                         "  *  F11 fullscreen  *  WASD pan")
             h_lbl = font_ui.render(help_txt, True, (100, 110, 130))
             screen.blit(h_lbl, (sw - h_lbl.get_width() - 12, sh - 22))
 
-            # Hover tooltip -- only when no panel/modal is grabbing attention.
-            if (hovered is not None
-                    and build_hq is None
-                    and not state.game_over):
-                tile = state.tiles.get(hovered)
+            # Tooltip -- hover OR pinned right-click inspect (CP-33).
+            # Pinned tooltip takes priority; clears on left-click.
+            _tooltip_hex = (
+                pinned_tooltip_hex if pinned_tooltip_hex is not None else hovered
+            )
+            if (
+                _tooltip_hex is not None
+                and build_hq is None
+                and not state.game_over
+            ):
+                tile = state.tiles.get(_tooltip_hex)
                 if tile is not None:
-                    # Prefer unit tooltip if a visible unit is on this hex.
-                    hu = state.unit_at(hovered)
+                    hu = state.unit_at(_tooltip_hex)
                     show_unit = (
                         hu is not None
                         and (_can_see is None or _can_see(hu))
@@ -2086,11 +2167,16 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                     if show_unit:
                         lines = unit_tooltip_lines(hu)
                     else:
-                        # Hide terrain detail for fully-unexplored hexes.
-                        explored = (explored_set is None
-                                    or hovered in explored_set)
-                        lines = terrain_tooltip_lines(tile) if explored else []
+                        _explored_ok = (
+                            explored_set is None or _tooltip_hex in explored_set
+                        )
+                        lines = terrain_tooltip_lines(tile) if _explored_ok else []
                     if lines:
+                        # Pinned tooltip: draw at current mouse pos with a subtle
+                        # "pinned" indicator in the title line.
+                        if pinned_tooltip_hex is not None and lines:
+                            lines = list(lines)
+                            lines[0] = (lines[0][0] + "  [pinned]", lines[0][1])
                         draw_tooltip(
                             screen, lines,
                             pygame.mouse.get_pos(),

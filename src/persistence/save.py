@@ -81,6 +81,14 @@ def slot_path(scenario_slug: str, slot: int, saves_dir: Path = SAVE_DIR) -> Path
     return saves_dir / f"{scenario_slug}_save_{slot}.json"
 
 
+def thumbnail_path(json_path: Path) -> Path:
+    """Return the PNG thumbnail path that accompanies *json_path* (CP-35).
+
+    E.g. ``saves/m1_autosave.json`` -> ``saves/m1_autosave.png``.
+    """
+    return json_path.with_suffix(".png")
+
+
 # ---------------------------------------------------------------------------
 # Serialisation helpers
 # ---------------------------------------------------------------------------
@@ -316,19 +324,27 @@ def save_slot(
 
 def _read_save_meta(path: Path, label: str) -> dict[str, Any]:
     """Read the minimal header of one save file for display in a load menu."""
+    thumb = thumbnail_path(path)
     if not path.exists():
-        return {"path": path, "label": label, "turn": None, "exists": False}
+        return {
+            "path": path, "label": label, "turn": None, "exists": False,
+            "thumb_path": thumb,
+        }
     try:
         with path.open(encoding="utf-8") as fh:
             data = json.load(fh)
         return {
-            "path":   path,
-            "label":  label,
-            "turn":   data.get("turn_number"),
-            "exists": True,
+            "path":       path,
+            "label":      label,
+            "turn":       data.get("turn_number"),
+            "exists":     True,
+            "thumb_path": thumb,
         }
     except Exception:
-        return {"path": path, "label": label, "turn": None, "exists": True}
+        return {
+            "path": path, "label": label, "turn": None, "exists": True,
+            "thumb_path": thumb,
+        }
 
 
 def list_saves(

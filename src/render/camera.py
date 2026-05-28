@@ -33,6 +33,10 @@ class Camera:
         self.offset_y = offset_y
         self._drag_origin: tuple[int, int] | None = None
         self._drag_offset_start: tuple[float, float] = (0.0, 0.0)
+        # CP-33: track whether the RMB press became a drag (>5 px) so we can
+        # distinguish a right-click-inspect from a right-drag-pan.
+        self._drag_moved:   bool = False
+        self._right_clicked: bool = False   # set for one event-poll cycle
 
     # ------------------------------------------------------------------
     # Transforms
@@ -76,21 +80,40 @@ class Camera:
             return True
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-            self._drag_origin = pygame.mouse.get_pos()
+            # Use event.pos when available (testable without a real display).
+            self._drag_origin = getattr(event, "pos", pygame.mouse.get_pos())
             self._drag_offset_start = (self.offset_x, self.offset_y)
+            self._drag_moved = False
+            self._right_clicked = False
             return False
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+            if self._drag_origin is not None and not self._drag_moved:
+                self._right_clicked = True   # short press -> inspect click
             self._drag_origin = None
             return False
 
         if event.type == pygame.MOUSEMOTION and self._drag_origin is not None:
-            mx, my = pygame.mouse.get_pos()
-            self.offset_x = self._drag_offset_start[0] + (mx - self._drag_origin[0])
-            self.offset_y = self._drag_offset_start[1] + (my - self._drag_origin[1])
+            mx, my = getattr(event, "pos", pygame.mouse.get_pos())
+            dx = mx - self._drag_origin[0]
+            dy = my - self._drag_origin[1]
+            if abs(dx) > 5 or abs(dy) > 5:
+                self._drag_moved = True
+            self.offset_x = self._drag_offset_start[0] + dx
+            self.offset_y = self._drag_offset_start[1] + dy
             return True
 
         return False
+
+    def take_right_click(self) -> bool:
+        """Return True (and clear the flag) if a right-click-without-drag just fired.
+
+        Call once per event-poll iteration.  The flag is set by ``handle_event``
+        and cleared here so callers can react exactly once per click.
+        """
+        v = self._right_clicked
+        self._right_clicked = False
+        return v
 
     def center_on(self, h: Hex) -> None:
         """Pan so that hex *h* is centred in the viewport."""
