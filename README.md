@@ -53,10 +53,12 @@ tactical tips.
 - [Architecture](docs/ARCHITECTURE.md) — code layout for contributors
 - [Deployment](docs/DEPLOY.md) — itch.io + GitHub Pages build steps
 - [Changelog](docs/CHANGELOG.md) — what landed in each checkpoint
+- [Future ideas](docs/ideas/) — medium, big, balance, and code-health
+  ideas preserved for future sessions
 
 ## Status
 
-739 tests green. Vertical slice complete (CP-1 through CP-27).
+783 tests green. Phase D polish complete (CP-28 through CP-36).
 The repo retains its original name (`Tank-Game`) for now; the *game* is
 **Saladin's Playground**.
 

@@ -5,7 +5,46 @@ the short version.
 
 ## Post-launch additions
 
-### Rank pips + Floating damage numbers + Level-up flash
+### Future-ideas notebook (CP-36)
+- `docs/ideas/` directory with four idea files preserved for future work:
+  `MEDIUM.md` (replay log, undo, tutorial, build queue, doctrine cards,
+  asymmetric income, map editor, sound expansion, ironman -- 9 entries);
+  `BIG.md` (hot-seat multiplayer, per-faction tech tree, weather/day-night,
+  squad system, MCTS/NN AI, large-map perf, more terrain -- 7 entries);
+  `BALANCE.md` (M6-M10 campaign missions, skirmish maps, veterancy decay,
+  per-mission difficulty scaling, achievement system -- 5 entries);
+  `CODE_HEALTH.md` (mypy+ruff hook, AI profiling, fog dirty-flag, rename,
+  split main.py, sprite regen flag -- 6 entries).
+- README and CHANGELOG updated to reference `docs/ideas/`.
+- No code change; no new tests.
+
+### MP cost overlay + AI trace arrows (CP-31, CP-32)
+- **MP cost numbers (CP-31)**: when a unit is selected and hex_size >= 24,
+  each reachable hex shows the movement-point cost in small white text.
+  Path hexes and the selected hex are skipped. Toggle-able; drawn on a
+  separate SRCALPHA surface so the cost doesn't muddy polygon fill.
+- **AI last-action arrows (CP-32)**: after each AI action a faint arrow is
+  drawn from the source hex to the destination. Up to 5 arrows persist
+  until the player turn starts; older arrows are more transparent. Handles
+  AttackAction, MoveAttackAction, BuildAction, and UpgradeTierAction.
+- 19 new tests; 783 total green.
+
+### Right-click inspect + Volume cycle + Save thumbnails (CP-33, CP-34, CP-35)
+- **Right-click inspect (CP-33)**: right-click without dragging pins a
+  tooltip to that hex. Camera still right-drag-pans (threshold: > 5px
+  displacement). Left-click clears the pin. `Camera.take_right_click()`
+  returns-and-clears a one-shot flag, distinguishing clicks from drags.
+- **Volume cycle (CP-34)**: `M` key now cycles 100 -> 75 -> 50 -> 25 -> 0%
+  instead of a binary mute toggle. A "Volume N%" (or "Muted") flash
+  appears bottom-right for 1.2s after each step. Help bar shows current
+  level when below 100%. `[MUTED]` shown when at 0%.
+- **Save thumbnails (CP-35)**: at save time (autosave + F5 manual slots),
+  a 200x120 `pygame.transform.smoothscale` PNG is written alongside the
+  JSON. The load menu displays it on the right side of each slot row;
+  falls back to a dark placeholder when the PNG is absent.
+- 25 new tests.
+
+### Rank pips + Floating damage numbers + Level-up flash (CP-28, CP-29, CP-30)
 - **Rank pips (CP-28)**: veteran units display 1-5 small coloured dots above
   their sprite at hex_size >= 16. Colour escalates by rank:
   bronze (Veteran) -> silver (Elite) -> gold (Heroic) -> cyan (Legendary)
