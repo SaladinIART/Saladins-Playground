@@ -56,7 +56,7 @@ tactical tips.
 
 ## Status
 
-669 tests green. Vertical slice complete (CP-1 through CP-27).
+739 tests green. Vertical slice complete (CP-1 through CP-27).
 The repo retains its original name (`Tank-Game`) for now; the *game* is
 **Saladin's Playground**.
 
