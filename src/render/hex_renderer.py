@@ -19,6 +19,7 @@ import pygame
 from src.engine.hex import Hex
 from src.engine.tile import Tile, CAPTURE_TURNS
 from src.engine.unit import Unit
+from src.engine.veterancy import rank_of as _rank_of
 from src.render.camera import Camera
 from src.render.sprites import get_terrain_sprite, get_unit_sprite
 
@@ -50,6 +51,15 @@ _ATK_BORDER_HOVER  = (255, 200, 200, 255)
 _FOG_EXPLORED_FACTOR = 0.40         # multiplier for explored-but-not-visible tiles
 _FOG_UNSEEN_COLOR    = (28, 32, 42) # dark fill for never-seen hexes
 _FOG_UNSEEN_BORDER   = (12, 14, 18)
+
+# Rank pip colours: 1=bronze, 2=silver, 3=gold, 4=cyan, 5=magenta
+_PIP_COLORS: dict[int, tuple[int, int, int]] = {
+    1: (180, 110,  30),   # bronze
+    2: (200, 200, 215),   # silver
+    3: (255, 210,   0),   # gold
+    4: ( 60, 220, 225),   # cyan
+    5: (220,  60, 225),   # magenta
+}
 
 FACTION_COLORS: dict[str, tuple[int, int, int]] = {
     "NATO": (30, 80, 200),
@@ -251,6 +261,23 @@ class HexRenderer:
                 fill_w = int(bar_w * (u.hp / u.unit_type.hp))
                 hp_color = (60, 200, 60) if u.hp > 5 else (220, 180, 40) if u.hp > 2 else (220, 60, 60)
                 pygame.draw.rect(surface, hp_color, (bx, by, fill_w, bar_h))
+
+            # Rank pips -- drawn above the unit circle, one per rank > 0.
+            # Colours escalate: bronze / silver / gold / cyan / magenta.
+            rank = _rank_of(u.level)
+            if rank > 0 and self.camera.hex_size >= 16:
+                pip_r   = max(2, int(self.camera.hex_size * 0.065))
+                pip_gap = 1                              # px between pips
+                pip_dia = pip_r * 2
+                total_w = rank * pip_dia + (rank - 1) * pip_gap
+                pip_y   = int(cy - radius - pip_r - 2)
+                pip_x0  = int(cx - total_w / 2) + pip_r
+                col     = _PIP_COLORS.get(rank, (255, 255, 255))
+                dark    = tuple(c // 3 for c in col)
+                for p in range(rank):
+                    px = pip_x0 + p * (pip_dia + pip_gap)
+                    pygame.draw.circle(surface, col,  (px, pip_y), pip_r)
+                    pygame.draw.circle(surface, dark, (px, pip_y), pip_r, 1)
 
     def draw_movement_overlay(
         self,

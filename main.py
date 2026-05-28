@@ -68,6 +68,7 @@ from src.engine.tech import (
 )
 from src.engine.victory import Outcome, default_victory_config
 from src.render.camera import Camera
+from src.render.floaters import FloaterLayer, DAMAGE_DURATION, LEVELUP_DURATION
 from src.render.hex_renderer import HexRenderer
 from src.render.tooltip import (
     draw_tooltip,
@@ -1221,6 +1222,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
     ai_timer:           float                         = 0.0
     save_flash:         float                         = 0.0   # countdown for save msg
     save_flash_msg:     str                           = ""
+    floater_layer:      FloaterLayer                  = FloaterLayer()
     confirm_end_turn:   bool                          = False  # show "units left to act" modal
     confirm_buttons:    list[tuple[pygame.Rect, str]] = []
     action_buttons:     list[tuple[pygame.Rect, str]] = []  # Defend/Retreat panel buttons
@@ -1233,6 +1235,7 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
         path_preview = []; attack_target_uids = set()
         bm_panel_rect = None; bm_items = []; go_buttons = []
         et_btn_rect = None; ai_steps = None; ai_timer = 0.0; save_flash = 0.0
+        floater_layer.clear()
 
     def _start_playing(new_state: GameState) -> None:
         nonlocal state, screen_state
@@ -1325,10 +1328,27 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
             return
         # Heal the one with lowest HP first.
         patient = min(patients, key=lambda u: u.hp)
+        _patient_hex    = patient.hex
+        _pre_patient_lvl = patient.level
         healed = medic_heal(state, selected_unit, patient)
         audio.play_sfx("capture")  # cheerful sfx; lacks a dedicated heal sound
         print(f"[medic] {selected_unit.unit_type.name} healed "
               f"{patient.unit_type.name} for +{healed} HP")
+
+        # Floating heal number (CP-29)
+        if healed > 0:
+            floater_layer.push_at_hex(
+                f"+{healed}", (80, 230, 100), _patient_hex, camera,
+            )
+        # Level-up from capture XP (CP-30)
+        if patient.level > _pre_patient_lvl:
+            floater_layer.push_at_hex(
+                "LEVEL UP!", (255, 220, 50),
+                _patient_hex, camera,
+                duration=LEVELUP_DURATION, y_offset=-16,
+            )
+            audio.play_sfx("levelup")
+
         movement = None; path_preview = []; attack_target_uids = set()
 
     def _order_retreat() -> None:
@@ -1677,6 +1697,12 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                             path_preview = []; attack_target_uids = set()
                             build_hq = clicked
                         elif clicked_unit is not None and clicked_unit.uid in attack_target_uids:
+                            # Snapshot pre-attack state for floater/levelup detection
+                            _atk_hex      = selected_unit.hex
+                            _def_hex      = clicked_unit.hex
+                            _pre_atk_lvl  = selected_unit.level
+                            _pre_def_lvl  = clicked_unit.level
+
                             result = resolve_attack(state, selected_unit, clicked_unit)
                             audio.play_sfx("attack")
                             print(
@@ -1688,6 +1714,37 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                                    if result.counter_damage else "")
                                 + (" (attacker killed)" if result.attacker_killed else "")
                             )
+
+                            # Floating damage numbers (CP-29)
+                            if result.damage_dealt:
+                                floater_layer.push_at_hex(
+                                    f"-{result.damage_dealt}",
+                                    (255, 90, 90), _def_hex, camera,
+                                )
+                            if result.counter_damage:
+                                floater_layer.push_at_hex(
+                                    f"-{result.counter_damage}",
+                                    (255, 165, 60), _atk_hex, camera,
+                                )
+
+                            # Level-up flash + SFX (CP-30) -- check both combatants
+                            if (not result.attacker_killed
+                                    and selected_unit.level > _pre_atk_lvl):
+                                floater_layer.push_at_hex(
+                                    "LEVEL UP!", (255, 220, 50),
+                                    _atk_hex, camera,
+                                    duration=LEVELUP_DURATION, y_offset=-16,
+                                )
+                                audio.play_sfx("levelup")
+                            if (not result.defender_killed
+                                    and clicked_unit.level > _pre_def_lvl):
+                                floater_layer.push_at_hex(
+                                    "LEVEL UP!", (255, 220, 50),
+                                    _def_hex, camera,
+                                    duration=LEVELUP_DURATION, y_offset=-16,
+                                )
+                                audio.play_sfx("levelup")
+
                             selected_unit = movement = None
                             path_preview = []; attack_target_uids = set()
                         elif movement is not None and clicked in movement.reachable:
@@ -1781,6 +1838,9 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                 path_preview = (movement.path_to(hovered)
                                 if hovered in movement.reachable else [])
 
+            # Floater tick
+            floater_layer.tick(dt)
+
             # Save flash countdown
             if save_flash > 0:
                 save_flash = max(0.0, save_flash - dt)
@@ -1836,6 +1896,9 @@ async def main() -> None:  # noqa: C901  (complexity expected in a game loop)
                 ]
                 renderer.draw_attack_overlay(screen, target_hexes, hovered_hex=hovered)
             renderer.draw_units(screen, list(state.units.values()), can_see=_can_see)
+
+            # Floating damage / heal / level-up labels (CP-29 / CP-30)
+            floater_layer.draw(screen, font_ui)
 
             # Build menu
             if build_hq is not None:

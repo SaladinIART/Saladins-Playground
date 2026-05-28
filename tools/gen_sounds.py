@@ -18,6 +18,7 @@ assets/sfx/build.wav       — mechanical clank (0.28 s)
 assets/sfx/end_turn.wav    — clean click + short ping (0.22 s)
 assets/sfx/win.wav         — ascending major fanfare (1.40 s)
 assets/sfx/lose.wav        — descending minor resolution (1.10 s)
+assets/sfx/levelup.wav     — bright two-tone rank-up chime (0.50 s)
 
 assets/music/NATO.wav      — crisp march ostinato loop (6.0 s)
 assets/music/BRICS.wav     — heavy industrial drone loop (6.0 s)
@@ -242,6 +243,41 @@ def gen_win() -> list[float]:
     return fade_out(result, 0.15)
 
 
+def gen_levelup() -> list[float]:
+    """Bright two-tone rank-up chime: quick rising fifth then shimmering hold.
+
+    Inspired by the capture arpeggio but shorter and more triumphant.
+    C5 -> G5 glide, then held G5 + E5 harmony with a short shimmer tail.
+    Total duration ~0.50 s.
+    """
+    # Rising arpeggio: C5 (72) -> E5 (76) -> G5 (79)
+    notes = [72, 76, 79]
+    note_dur = 0.10
+    gap      = 0.015
+    result: list[float] = []
+    for n in notes:
+        body = envelope(
+            sine(note_hz(n), note_dur, amp=0.55),
+            attack=0.005, decay=0.03, sustain_level=0.65, release=0.04,
+        )
+        result.extend(body)
+        result.extend([0.0] * int(gap * RATE))
+
+    # Held G5 + E5 harmony (the triumphant ring)
+    hold_dur = 0.20
+    held = mix_add(
+        envelope(sine(note_hz(79), hold_dur, amp=0.50),
+                 attack=0.01, decay=0.04, sustain_level=0.60, release=0.08),
+        envelope(sine(note_hz(76), hold_dur, amp=0.25),
+                 attack=0.01, decay=0.04, sustain_level=0.55, release=0.08),
+        # Shimmer: add a very faint octave above
+        envelope(sine(note_hz(91), hold_dur, amp=0.10),
+                 attack=0.02, decay=0.05, sustain_level=0.30, release=0.06),
+    )
+    result.extend(held)
+    return fade_out(result, 0.08)
+
+
 def gen_lose() -> list[float]:
     """Descending minor resolution."""
     melody = [
@@ -425,6 +461,7 @@ def main() -> None:
         ("end_turn", gen_end_turn),
         ("win",      gen_win),
         ("lose",     gen_lose),
+        ("levelup",  gen_levelup),
     ]:
         write_wav(SFX_DIR / f"{name}.wav", gen())
 
@@ -436,7 +473,7 @@ def main() -> None:
     ]:
         write_wav(MUSIC_DIR / f"{faction}.wav", gen())
 
-    total = 7 + 3
+    total = 8 + 3
     print(f"Done. {total} audio files generated.")
 
 
